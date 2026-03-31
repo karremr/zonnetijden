@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#f97316">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.json">
+  <title>Zontijden</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --sunrise-color: #f97316;
+      --sunset-color: #c026d3;
+      --text: #f1f5f9;
+      --subtext: #94a3b8;
+      --card: rgba(255,255,255,0.08);
+      --card-border: rgba(255,255,255,0.12);
+    }
+
+    body {
+      font-family: -apple-system, 'Segoe UI', sans-serif;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      color: var(--text);
+      background: #0f172a;
+      overflow-x: hidden;
+    }
+
+    /* Dynamic sky background */
+    .sky {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      transition: background 2s ease;
+    }
+
+    .content {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 420px;
+      padding: 0 20px 40px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* Header */
+    .header {
+      padding-top: env(safe-area-inset-top, 20px);
+      padding-top: max(env(safe-area-inset-top, 20px), 20px);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .app-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--subtext);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .refresh-btn {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      cursor: pointer;
+      color: var(--text);
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.3s, background 0.2s;
+    }
+    .refresh-btn:active { transform: scale(0.9); }
+    .refresh-btn.spinning { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Sun arc visualization */
+    .arc-container {
+      width: 100%;
+      aspect-ratio: 2/1;
+      position: relative;
+      margin-top: 10px;
+    }
+
+    .arc-svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    /* Main time cards */
+    .times-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .time-card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      backdrop-filter: blur(10px);
+    }
+
+    .time-card.sunrise { border-color: rgba(249,115,22,0.4); }
+    .time-card.sunset  { border-color: rgba(192,38,211,0.4); }
+
+    .card-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--subtext);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .card-label .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .sunrise .dot { background: var(--sunrise-color); }
+    .sunset  .dot { background: var(--sunset-color); }
+
+    .card-time {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1;
+    }
+    .sunrise .card-time { color: var(--sunrise-color); }
+    .sunset  .card-time { color: var(--sunset-color); }
+
+    .card-sub {
+      font-size: 0.78rem;
+      color: var(--subtext);
+    }
+
+    /* Info cards */
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .info-card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 16px;
+      backdrop-filter: blur(10px);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .info-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--subtext);
+    }
+
+    .info-value {
+      font-size: 1.3rem;
+      font-weight: 700;
+    }
+
+    .info-sub {
+      font-size: 0.75rem;
+      color: var(--subtext);
+    }
+
+    /* Golden hour card */
+    .golden-card {
+      background: linear-gradient(135deg, rgba(251,191,36,0.15), rgba(249,115,22,0.1));
+      border: 1px solid rgba(251,191,36,0.25);
+      border-radius: 20px;
+      padding: 20px;
+      backdrop-filter: blur(10px);
+    }
+
+    .golden-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #fbbf24;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .golden-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .golden-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .golden-row:first-of-type { padding-top: 0; }
+
+    .golden-name { font-size: 0.85rem; color: var(--subtext); }
+    .golden-time { font-size: 0.95rem; font-weight: 600; color: #fbbf24; }
+
+    /* Location bar */
+    .location-bar {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+      color: var(--subtext);
+      backdrop-filter: blur(10px);
+    }
+
+    .location-icon { font-size: 1rem; }
+    .location-text { flex: 1; }
+
+    /* Date nav */
+    .date-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 10px 8px;
+      backdrop-filter: blur(10px);
+    }
+
+    .nav-btn {
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 1.2rem;
+      width: 40px;
+      height: 40px;
+      cursor: pointer;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+    }
+    .nav-btn:active { background: rgba(255,255,255,0.1); }
+
+    .date-display {
+      text-align: center;
+      flex: 1;
+    }
+
+    .date-main {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .date-sub {
+      font-size: 0.75rem;
+      color: var(--subtext);
+    }
+
+    /* Status / error */
+    .status {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--subtext);
+    }
+
+    .status-icon { font-size: 3rem; margin-bottom: 16px; }
+    .status-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+    .status-msg { font-size: 0.85rem; line-height: 1.5; }
+
+    .btn-primary {
+      background: var(--sunrise-color);
+      color: white;
+      border: none;
+      border-radius: 14px;
+      padding: 14px 28px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 20px;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .btn-primary:active { opacity: 0.85; transform: scale(0.97); }
+
+    /* Progress bar (daylight) */
+    .daylight-bar-wrap {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 16px;
+      backdrop-filter: blur(10px);
+    }
+
+    .daylight-bar-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--subtext);
+      margin-bottom: 10px;
+    }
+
+    .daylight-bar-track {
+      height: 8px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 100px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .daylight-bar-fill {
+      height: 100%;
+      border-radius: 100px;
+      background: linear-gradient(90deg, #f97316, #fbbf24, #c026d3);
+      transition: width 1s ease;
+      position: relative;
+    }
+
+    .daylight-bar-cursor {
+      position: absolute;
+      right: -4px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 14px;
+      height: 14px;
+      background: white;
+      border-radius: 50%;
+      box-shadow: 0 0 8px rgba(249,115,22,0.8);
+    }
+
+    .daylight-bar-times {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 6px;
+      font-size: 0.72rem;
+      color: var(--subtext);
+    }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<div class="sky" id="sky"></div>
+
+<div class="content" id="main-content">
+  <!-- Header -->
+  <div class="header">
+    <span class="app-title">Zontijden</span>
+    <button class="refresh-btn" id="refresh-btn" onclick="refreshLocation()" title="Locatie vernieuwen">&#8635;</button>
+  </div>
+
+  <!-- Loading state -->
+  <div class="status" id="loading-state">
+    <div class="status-icon">&#9728;</div>
+    <div class="status-title">Locatie ophalen...</div>
+    <div class="status-msg">Even geduld terwijl je locatie wordt bepaald.</div>
+  </div>
+
+  <!-- Error state -->
+  <div class="status hidden" id="error-state">
+    <div class="status-icon">&#128683;</div>
+    <div class="status-title" id="error-title">Locatie niet beschikbaar</div>
+    <div class="status-msg" id="error-msg">Sta locatietoegang toe om de zontijden te zien.</div>
+    <button class="btn-primary" onclick="refreshLocation()">Opnieuw proberen</button>
+  </div>
+
+  <!-- Data view -->
+  <div id="data-view" class="hidden">
+
+    <!-- Date navigation -->
+    <div class="date-nav">
+      <button class="nav-btn" onclick="changeDate(-1)">&#8592;</button>
+      <div class="date-display">
+        <div class="date-main" id="date-main"></div>
+        <div class="date-sub" id="date-sub"></div>
+      </div>
+      <button class="nav-btn" onclick="changeDate(1)">&#8594;</button>
+    </div>
+
+    <!-- Sun arc -->
+    <div class="arc-container">
+      <svg class="arc-svg" viewBox="0 0 300 150" id="arc-svg">
+        <!-- Horizon line -->
+        <line x1="10" y1="140" x2="290" y2="140" stroke="rgba(148,163,184,0.3)" stroke-width="1.5"/>
+
+        <!-- Dashed arc path -->
+        <path id="arc-path" d="" fill="none" stroke="rgba(251,191,36,0.25)" stroke-width="2" stroke-dasharray="5 4"/>
+
+        <!-- Colored progress arc -->
+        <path id="arc-progress" d="" fill="none" stroke-width="3" stroke-linecap="round"/>
+
+        <!-- Sunrise marker -->
+        <circle id="marker-rise" cx="10" cy="140" r="5" fill="#f97316"/>
+        <text id="label-rise" x="10" y="155" text-anchor="middle" font-size="9" fill="#f97316" font-family="-apple-system,sans-serif"></text>
+
+        <!-- Sunset marker -->
+        <circle id="marker-set" cx="290" cy="140" r="5" fill="#c026d3"/>
+        <text id="label-set" x="290" y="155" text-anchor="middle" font-size="9" fill="#c026d3" font-family="-apple-system,sans-serif"></text>
+
+        <!-- Sun icon (current position) -->
+        <circle id="sun-glow" cx="150" cy="60" r="14" fill="rgba(251,191,36,0.2)"/>
+        <circle id="sun-dot"  cx="150" cy="60" r="8"  fill="#fbbf24"/>
+      </svg>
+    </div>
+
+    <!-- Main time cards -->
+    <div class="times-row">
+      <div class="time-card sunrise">
+        <div class="card-label"><span class="dot"></span> Zonsopkomst</div>
+        <div class="card-time" id="sunrise-time">--:--</div>
+        <div class="card-sub" id="sunrise-rel"></div>
+      </div>
+      <div class="time-card sunset">
+        <div class="card-label"><span class="dot"></span> Zonsondergang</div>
+        <div class="card-time" id="sunset-time">--:--</div>
+        <div class="card-sub" id="sunset-rel"></div>
+      </div>
+    </div>
+
+    <!-- Daylight progress bar -->
+    <div class="daylight-bar-wrap">
+      <div class="daylight-bar-label">Daglicht voortgang</div>
+      <div class="daylight-bar-track">
+        <div class="daylight-bar-fill" id="daylight-fill" style="width:0%">
+          <div class="daylight-bar-cursor" id="sun-cursor"></div>
+        </div>
+      </div>
+      <div class="daylight-bar-times">
+        <span id="bar-rise-label">--:--</span>
+        <span id="daylight-duration">-- uur daglicht</span>
+        <span id="bar-set-label">--:--</span>
+      </div>
+    </div>
+
+    <!-- Info grid -->
+    <div class="info-grid">
+      <div class="info-card">
+        <div class="info-label">&#9728; Zonsmidddag</div>
+        <div class="info-value" id="solar-noon">--:--</div>
+        <div class="info-sub">Hoogste stand</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">&#9719; Daglicht</div>
+        <div class="info-value" id="daylight-hours">--</div>
+        <div class="info-sub">uur &amp; minuten</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">&#128348; Nu</div>
+        <div class="info-value" id="current-time">--:--</div>
+        <div class="info-sub" id="sun-phase">--</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">&#127758; Locatie</div>
+        <div class="info-value" id="location-coords" style="font-size:0.9rem">--</div>
+        <div class="info-sub" id="location-accuracy"></div>
+      </div>
+    </div>
+
+    <!-- Golden hour -->
+    <div class="golden-card">
+      <div class="golden-title">&#127774; Gouden uur</div>
+      <div class="golden-row">
+        <span class="golden-name">Ochtend begin</span>
+        <span class="golden-time" id="golden-morning-start">--:--</span>
+      </div>
+      <div class="golden-row">
+        <span class="golden-name">Ochtend einde</span>
+        <span class="golden-time" id="golden-morning-end">--:--</span>
+      </div>
+      <div class="golden-row">
+        <span class="golden-name">Avond begin</span>
+        <span class="golden-time" id="golden-evening-start">--:--</span>
+      </div>
+      <div class="golden-row">
+        <span class="golden-name">Avond einde</span>
+        <span class="golden-time" id="golden-evening-end">--:--</span>
+      </div>
+    </div>
+
+    <!-- Location bar -->
+    <div class="location-bar">
+      <span class="location-icon">&#128205;</span>
+      <span class="location-text" id="location-bar-text">Locatie ophalen...</span>
+    </div>
+
+  </div><!-- /data-view -->
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+let lat = null, lng = null, accuracy = null;
+let currentDate = new Date();
+currentDate.setHours(12, 0, 0, 0);
+
+// ─── Sun calculation (NOAA algorithm) ────────────────────────────────────────
+function calcSun(lat, lng, date) {
+  const rad = Math.PI / 180;
+  const JD = (date.getTime() / 86400000) + 2440587.5;
+  const J2000 = 2451545.0;
+  const n = Math.round(JD - J2000 - 0.0009 - lng / 360);
+  const Jstar = J2000 + 0.0009 + lng / 360 + n;
+  const M = ((357.5291 + 0.98560028 * (Jstar - J2000)) % 360 + 360) % 360;
+  const C = 1.9148 * Math.sin(M * rad) + 0.02 * Math.sin(2 * M * rad) + 0.0003 * Math.sin(3 * M * rad);
+  const lambda = (M + C + 180 + 102.9372) % 360;
+  const Jtransit = Jstar + 0.0053 * Math.sin(M * rad) - 0.0069 * Math.sin(2 * lambda * rad);
+  const sin_d = Math.sin(lambda * rad) * Math.sin(23.4397 * rad);
+  const cos_d = Math.cos(Math.asin(sin_d));
+
+  // Standard sunrise/sunset: -0.8333°
+  const cos_omega0 = (Math.sin(-0.8333 * rad) - Math.sin(lat * rad) * sin_d) / (Math.cos(lat * rad) * cos_d);
+  // Civil twilight: -6°
+  const cos_omegaC = (Math.sin(-6 * rad) - Math.sin(lat * rad) * sin_d) / (Math.cos(lat * rad) * cos_d);
+  // Golden hour: 6° above horizon
+  const cos_omegaG = (Math.sin(6 * rad) - Math.sin(lat * rad) * sin_d) / (Math.cos(lat * rad) * cos_d);
+
+  const toDate = jd => new Date((jd - 2440587.5) * 86400000);
+  const fromAngle = (cos_omega) => {
+    if (cos_omega < -1 || cos_omega > 1) return null;
+    return Math.acos(cos_omega) / rad;
+  };
+
+  const omega0 = fromAngle(cos_omega0);
+  const omegaC = fromAngle(cos_omegaC);
+  const omegaG = fromAngle(cos_omegaG);
+
+  return {
+    sunrise:   omega0 ? toDate(Jtransit - omega0 / 360) : null,
+    sunset:    omega0 ? toDate(Jtransit + omega0 / 360) : null,
+    noon:      toDate(Jtransit),
+    dawnCivil: omegaC ? toDate(Jtransit - omegaC / 360) : null,
+    duskCivil: omegaC ? toDate(Jtransit + omegaC / 360) : null,
+    goldenMorningEnd:   omegaG ? toDate(Jtransit - omegaG / 360) : null,
+    goldenEveningStart: omegaG ? toDate(Jtransit + omegaG / 360) : null,
+  };
+}
+
+// ─── Formatting ──────────────────────────────────────────────────────────────
+const fmtTime = d => d ? d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+
+function relativeTime(d) {
+  if (!d) return '';
+  const diff = Math.round((d - Date.now()) / 60000); // minutes
+  if (Math.abs(diff) < 1) return 'nu';
+  if (diff > 0) return `over ${diff < 60 ? diff + ' min' : Math.round(diff/60) + ' uur'}`;
+  return `${Math.abs(diff) < 60 ? Math.abs(diff) + ' min' : Math.round(Math.abs(diff)/60) + ' uur'} geleden`;
+}
+
+function formatDuration(ms) {
+  const total = Math.round(ms / 60000);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${h}u ${m.toString().padStart(2,'0')}m`;
+}
+
+// ─── Sky background ───────────────────────────────────────────────────────────
+function updateSky(sun) {
+  const sky = document.getElementById('sky');
+  const now = Date.now();
+  if (!sun.sunrise || !sun.sunset) {
+    sky.style.background = 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)';
+    return;
+  }
+
+  const rise = sun.sunrise.getTime();
+  const set  = sun.sunset.getTime();
+  const noon = sun.noon.getTime();
+
+  let bg;
+  if (now < rise - 60*60*1000) {
+    bg = 'linear-gradient(180deg, #020617 0%, #0f172a 100%)'; // night
+  } else if (now < rise) {
+    bg = 'linear-gradient(180deg, #1e3a5f 0%, #7c3aed 50%, #f97316 100%)'; // dawn
+  } else if (now < noon) {
+    bg = 'linear-gradient(180deg, #0ea5e9 0%, #38bdf8 50%, #7dd3fc 100%)'; // morning
+  } else if (now < set) {
+    bg = 'linear-gradient(180deg, #0369a1 0%, #0ea5e9 60%, #bae6fd 100%)'; // afternoon
+  } else if (now < set + 60*60*1000) {
+    bg = 'linear-gradient(180deg, #1e1b4b 0%, #7c3aed 40%, #f97316 100%)'; // dusk
+  } else {
+    bg = 'linear-gradient(180deg, #020617 0%, #0f172a 100%)'; // night
+  }
+  sky.style.background = bg;
+}
+
+// ─── Sun arc SVG ─────────────────────────────────────────────────────────────
+function updateArc(sun) {
+  const W = 300, H = 140, horizon = 140;
+  const cx = W / 2, rx = 130, ry = 100;
+
+  const arcPath = `M ${cx - rx} ${horizon} A ${rx} ${ry} 0 0 1 ${cx + rx} ${horizon}`;
+  document.getElementById('arc-path').setAttribute('d', arcPath);
+  document.getElementById('marker-rise').setAttribute('cx', cx - rx);
+  document.getElementById('marker-set').setAttribute('cx', cx + rx);
+  document.getElementById('label-rise').setAttribute('x', cx - rx);
+  document.getElementById('label-set').setAttribute('x', cx + rx);
+  document.getElementById('label-rise').textContent = fmtTime(sun.sunrise);
+  document.getElementById('label-set').textContent  = fmtTime(sun.sunset);
+
+  if (!sun.sunrise || !sun.sunset) return;
+
+  const now = Date.now();
+  const rise = sun.sunrise.getTime();
+  const set  = sun.sunset.getTime();
+  const noon = sun.noon.getTime();
+
+  // Progress 0..1 along the arc
+  const t = Math.max(0, Math.min(1, (now - rise) / (set - rise)));
+  const angle = Math.PI - t * Math.PI; // π → 0 (left to right)
+  const sunX = cx + rx * Math.cos(angle) * -1; // mirrored
+  const sunY = horizon - ry * Math.sin(angle);
+
+  // Progress arc (coloured)
+  const endX = cx + rx * Math.cos(Math.PI - t * Math.PI) * -1;
+  const endY = horizon - ry * Math.sin(Math.PI - t * Math.PI);
+  const large = t > 0.5 ? 1 : 0;
+  const progressPath = `M ${cx - rx} ${horizon} A ${rx} ${ry} 0 ${large} 1 ${endX} ${endY}`;
+  const prog = document.getElementById('arc-progress');
+  prog.setAttribute('d', progressPath);
+  prog.setAttribute('stroke', 'url(#sunGrad)');
+
+  // Add gradient def if not present
+  if (!document.getElementById('sunGrad')) {
+    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+    defs.innerHTML = `<linearGradient id="sunGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#fbbf24"/>
+    </linearGradient>`;
+    document.getElementById('arc-svg').prepend(defs);
+  }
+
+  // Sun position
+  document.getElementById('sun-glow').setAttribute('cx', sunX);
+  document.getElementById('sun-glow').setAttribute('cy', sunY);
+  document.getElementById('sun-dot').setAttribute('cx', sunX);
+  document.getElementById('sun-dot').setAttribute('cy', sunY);
+
+  // Hide sun if below horizon
+  const belowHorizon = now < rise || now > set;
+  document.getElementById('sun-glow').style.opacity = belowHorizon ? '0.3' : '1';
+  document.getElementById('sun-dot').style.opacity  = belowHorizon ? '0.4' : '1';
+}
+
+// ─── Phase label ─────────────────────────────────────────────────────────────
+function getSunPhase(sun) {
+  const now = Date.now();
+  if (!sun.sunrise || !sun.sunset) return 'Onbekend';
+  const rise = sun.sunrise.getTime(), set = sun.sunset.getTime(), noon = sun.noon.getTime();
+  const dawn = sun.dawnCivil?.getTime(), dusk = sun.duskCivil?.getTime();
+  if (now < dawn) return 'Nacht';
+  if (now < rise) return 'Schemering (ochtend)';
+  if (now < sun.goldenMorningEnd?.getTime()) return 'Gouden uur (ochtend)';
+  if (now < noon) return 'Ochtend';
+  if (now < set) return 'Middag';
+  if (now < sun.goldenEveningStart?.getTime() + 60*60*1000) return 'Gouden uur (avond)';
+  if (now < dusk) return 'Schemering (avond)';
+  return 'Nacht';
+}
+
+// ─── Daylight bar ─────────────────────────────────────────────────────────────
+function updateDaylightBar(sun) {
+  if (!sun.sunrise || !sun.sunset) return;
+  const now = Date.now();
+  const rise = sun.sunrise.getTime(), set = sun.sunset.getTime();
+  const t = Math.max(0, Math.min(1, (now - rise) / (set - rise)));
+  const isDay = now >= rise && now <= set;
+  const fill = document.getElementById('daylight-fill');
+  const cursor = document.getElementById('sun-cursor');
+  fill.style.width = isDay ? (t * 100) + '%' : (now < rise ? '0%' : '100%');
+  cursor.style.display = isDay ? 'block' : 'none';
+  document.getElementById('bar-rise-label').textContent = fmtTime(sun.sunrise);
+  document.getElementById('bar-set-label').textContent  = fmtTime(sun.sunset);
+  const dur = set - rise;
+  document.getElementById('daylight-duration').textContent = formatDuration(dur) + ' daglicht';
+}
+
+// ─── Main render ─────────────────────────────────────────────────────────────
+function render() {
+  if (lat === null) return;
+
+  const sun = calcSun(lat, lng, currentDate);
+  const now = new Date();
+  const isToday = currentDate.toDateString() === now.toDateString();
+
+  // Date nav
+  const days = ['zondag','maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag'];
+  const months = ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
+  document.getElementById('date-main').textContent =
+    currentDate.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+  document.getElementById('date-sub').textContent = isToday ? 'Vandaag' :
+    (currentDate > now ? 'Toekomst' : 'Verleden');
+
+  // Times
+  document.getElementById('sunrise-time').textContent = fmtTime(sun.sunrise);
+  document.getElementById('sunset-time').textContent  = fmtTime(sun.sunset);
+  document.getElementById('sunrise-rel').textContent  = isToday ? relativeTime(sun.sunrise) : '';
+  document.getElementById('sunset-rel').textContent   = isToday ? relativeTime(sun.sunset)  : '';
+  document.getElementById('solar-noon').textContent   = fmtTime(sun.noon);
+
+  // Daylight duration
+  if (sun.sunrise && sun.sunset) {
+    document.getElementById('daylight-hours').textContent = formatDuration(sun.sunset - sun.sunrise);
+  }
+
+  // Current time & phase
+  document.getElementById('current-time').textContent = now.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  document.getElementById('sun-phase').textContent = isToday ? getSunPhase(sun) : '–';
+
+  // Location
+  const latStr = lat >= 0 ? lat.toFixed(4) + '°N' : Math.abs(lat).toFixed(4) + '°Z';
+  const lngStr = lng >= 0 ? lng.toFixed(4) + '°O' : Math.abs(lng).toFixed(4) + '°W';
+  document.getElementById('location-coords').textContent = latStr + ' ' + lngStr;
+  document.getElementById('location-accuracy').textContent = accuracy ? `±${Math.round(accuracy)}m` : '';
+  document.getElementById('location-bar-text').textContent = `${latStr}, ${lngStr}${accuracy ? ' ±' + Math.round(accuracy) + 'm' : ''}`;
+
+  // Golden hour
+  document.getElementById('golden-morning-start').textContent = fmtTime(sun.dawnCivil);
+  document.getElementById('golden-morning-end').textContent   = fmtTime(sun.goldenMorningEnd);
+  document.getElementById('golden-evening-start').textContent = fmtTime(sun.goldenEveningStart);
+  document.getElementById('golden-evening-end').textContent   = fmtTime(sun.duskCivil);
+
+  // Arc & sky (only for today)
+  if (isToday) {
+    updateSky(sun);
+    updateArc(sun);
+    updateDaylightBar(sun);
+  } else {
+    updateArc(sun);
+  }
+
+  document.getElementById('loading-state').classList.add('hidden');
+  document.getElementById('error-state').classList.add('hidden');
+  document.getElementById('data-view').classList.remove('hidden');
+}
+
+// ─── Date navigation ─────────────────────────────────────────────────────────
+function changeDate(delta) {
+  currentDate = new Date(currentDate);
+  currentDate.setDate(currentDate.getDate() + delta);
+  render();
+}
+
+// ─── Geolocation ─────────────────────────────────────────────────────────────
+function refreshLocation() {
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('spinning');
+  document.getElementById('error-state').classList.add('hidden');
+  document.getElementById('loading-state').classList.remove('hidden');
+  document.getElementById('data-view').classList.add('hidden');
+
+  if (!navigator.geolocation) {
+    showError('Niet ondersteund', 'Je browser ondersteunt geen locatiediensten.');
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      lat = pos.coords.latitude;
+      lng = pos.coords.longitude;
+      accuracy = pos.coords.accuracy;
+      btn.classList.remove('spinning');
+      render();
+    },
+    err => {
+      btn.classList.remove('spinning');
+      const msgs = {
+        1: 'Je hebt geen locatietoegang gegeven. Sta dit toe in je browserinstellingen.',
+        2: 'Locatie kon niet worden bepaald. Probeer het opnieuw.',
+        3: 'Het duurde te lang om de locatie te bepalen. Probeer het opnieuw.',
+      };
+      showError('Locatie niet beschikbaar', msgs[err.code] || 'Onbekende fout.');
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 300000 }
+  );
+}
+
+function showError(title, msg) {
+  document.getElementById('error-title').textContent = title;
+  document.getElementById('error-msg').textContent = msg;
+  document.getElementById('loading-state').classList.add('hidden');
+  document.getElementById('error-state').classList.remove('hidden');
+}
+
+// ─── Auto-update clock every 30s ─────────────────────────────────────────────
+setInterval(() => {
+  if (lat !== null) render();
+}, 30000);
+
+// ─── Register service worker ──────────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+refreshLocation();
+</script>
+</body>
+</html>
