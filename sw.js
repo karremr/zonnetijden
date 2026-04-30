@@ -1,5 +1,8 @@
-const CACHE = 'zontijden-v1';
-const FILES = ['./index.html', './manifest.json', './icon.svg'];
+const CACHE = 'apps-v2';
+const FILES = [
+  './index.html', './manifest.json', './icon.svg',
+  './todo.html', './todo-manifest.json', './todo-icon.svg'
+];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));
